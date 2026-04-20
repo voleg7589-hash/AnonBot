@@ -1,14 +1,17 @@
-@'
 import logging
 import sqlite3
 import secrets
 import string
+import os
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
 BOT_TOKEN = "8206275772:AAGGRf1u50iDCziHS0SCHSyijddw4Z8DAL8"
 YOUR_ID = 6018936021
+
+# Прокси (если нужно, можно включить переменной окружения)
+PROXY_URL = os.environ.get("PROXY_URL", None)  # Например: socks5://proxy:1080
 
 logging.basicConfig(level=logging.INFO)
 
@@ -55,7 +58,6 @@ def generate_link_code():
             return code
 
 def get_main_keyboard():
-    """Клавиатура с кнопками для быстрого доступа"""
     keyboard = [
         [KeyboardButton("📋 Моя ссылка"), KeyboardButton("📬 Полученные")],
         [KeyboardButton("❓ Помощь")]
@@ -77,10 +79,7 @@ async def start(update: Update, context):
         if target_user:
             context.user_data['reply_to_code'] = target_code
             context.user_data['reply_to_user_id'] = target_user[1]
-            await update.message.reply_text(
-                "📝 Напиши сообщение. Оно будет отправлено анонимно.",
-                reply_markup=None
-            )
+            await update.message.reply_text("📝 Напиши сообщение. Оно будет отправлено анонимно.")
             return
     
     if not existing_user:
@@ -95,9 +94,7 @@ async def start(update: Update, context):
         profile_link = f"https://t.me/{bot_username}?start={link_code}"
         
         await update.message.reply_text(
-            f"🔐 Твоя ссылка для анонимных сообщений:\n`{profile_link}`\n\n"
-            f"Вставь её в профиль. Любой, кто перейдет, сможет написать тебе.\n"
-            f"Ты можешь отвечать на сообщения кнопкой «Ответить».",
+            f"🔐 Твоя ссылка для анонимных сообщений:\n`{profile_link}`\n\nВставь её в профиль.",
             reply_markup=get_main_keyboard(),
             parse_mode="Markdown"
         )
@@ -113,16 +110,12 @@ async def main_menu(update: Update, context):
         bot_username = (await context.bot.get_me()).username
         profile_link = f"https://t.me/{bot_username}?start={user[0]}"
         await update.message.reply_text(
-            f"📎 Твоя ссылка: `{profile_link}`\n\n"
-            f"Вставь её в профиль, чтобы получать анонимные сообщения.",
+            f"📎 Твоя ссылка: `{profile_link}`",
             reply_markup=get_main_keyboard(),
             parse_mode="Markdown"
         )
     else:
-        await update.message.reply_text(
-            "Нажми /start чтобы получить ссылку.",
-            reply_markup=get_main_keyboard()
-        )
+        await update.message.reply_text("Нажми /start", reply_markup=get_main_keyboard())
 
 async def my_link(update: Update, context):
     user_id = update.effective_user.id
@@ -132,12 +125,7 @@ async def my_link(update: Update, context):
     if user:
         bot_username = (await context.bot.get_me()).username
         profile_link = f"https://t.me/{bot_username}?start={user[0]}"
-        await update.message.reply_text(
-            f"📎 Твоя ссылка:\n`{profile_link}`",
-            parse_mode="Markdown"
-        )
-    else:
-        await update.message.reply_text("Напиши /start чтобы получить ссылку.")
+        await update.message.reply_text(f"📎 Твоя ссылка: `{profile_link}`", parse_mode="Markdown")
 
 async def inbox_command(update: Update, context):
     user_id = update.effective_user.id
@@ -145,7 +133,7 @@ async def inbox_command(update: Update, context):
     user = cursor.fetchone()
     
     if not user:
-        await update.message.reply_text("Напиши /start чтобы получить ссылку.")
+        await update.message.reply_text("Нажми /start")
         return
     
     user_code = user[0]
@@ -175,12 +163,11 @@ async def inbox_command(update: Update, context):
 
 async def help_command(update: Update, context):
     await update.message.reply_text(
-        "📌 Как это работает\n\n"
+        "📌 Как работает бот:\n\n"
         "• Получи свою ссылку через /start\n"
         "• Вставь ссылку в профиль\n"
-        "• Любой, кто перейдет по ссылке, сможет написать тебе анонимно\n"
-        "• На полученные сообщения можно ответить кнопкой «Ответить»\n"
-        "• Все ответы тоже анонимны",
+        "• Любой, кто перейдет по ссылке, сможет написать тебе\n"
+        "• На сообщения можно ответить кнопкой «Ответить»",
         reply_markup=get_main_keyboard()
     )
 
@@ -188,7 +175,6 @@ async def handle_message(update: Update, context):
     user = update.effective_user
     message_text = update.message.text
     
-    # Обработка текстовых команд с клавиатуры
     if message_text == "📋 Моя ссылка":
         await my_link(update, context)
         return
@@ -199,7 +185,6 @@ async def handle_message(update: Update, context):
         await help_command(update, context)
         return
     
-    # Проверка на ответ
     reply_to_user_id = context.user_data.get('reply_to_user_id')
     reply_to_msg_id = context.user_data.get('reply_to_msg_id')
     
@@ -216,9 +201,7 @@ async def handle_message(update: Update, context):
                 
                 await context.bot.send_message(
                     chat_id=reply_to_user_id,
-                    text=f"🔔 Ответ\n\n"
-                         f"Твой вопрос:\n{original_text[:100]}\n\n"
-                         f"Ответ:\n{message_text}",
+                    text=f"🔔 Ответ на твоё сообщение:\n\n{message_text}",
                     reply_markup=InlineKeyboardMarkup(keyboard)
                 )
                 
@@ -230,7 +213,7 @@ async def handle_message(update: Update, context):
                 
                 await context.bot.send_message(
                     chat_id=YOUR_ID,
-                    text=f"🔄 Ответ\nОт: {user.first_name} (@{user.username or 'нет'})\nID: {user.id}\nКому: {original_sender_id}\nТекст: {message_text}"
+                    text=f"🔄 Ответ\nОт: {user.first_name} (@{user.username or 'нет'})\nID: {user.id}\nТекст: {message_text}"
                 )
                 
                 await update.message.reply_text("✅ Ответ отправлен.")
@@ -239,10 +222,9 @@ async def handle_message(update: Update, context):
                 context.user_data.pop('reply_to_msg_id', None)
                 return
         except Exception as e:
-            await update.message.reply_text(f"Ошибка: {e}")
+            await update.message.reply_text(f"❌ Ошибка: {e}")
             return
     
-    # Отправка анонимки
     target_code = context.user_data.get('reply_to_code')
     target_user_id = context.user_data.get('reply_to_user_id')
     
@@ -304,7 +286,13 @@ async def admin_stats(update: Update, context):
     await update.message.reply_text(f"📊 Пользователей: {users}\nСообщений: {messages}")
 
 def main():
-    app = Application.builder().token(BOT_TOKEN).build()
+    # Поддержка прокси (если указан)
+    if PROXY_URL:
+        app = Application.builder().token(BOT_TOKEN).proxy_url(PROXY_URL).build()
+        logging.info(f"Используется прокси: {PROXY_URL}")
+    else:
+        app = Application.builder().token(BOT_TOKEN).build()
+    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("inbox", inbox_command))
     app.add_handler(CommandHandler("stats", admin_stats))
@@ -317,4 +305,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-'@ | Out-File -FilePath bot.py -Encoding utf8
